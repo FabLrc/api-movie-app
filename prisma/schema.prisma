@@ -1,0 +1,128 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  username  String   @unique
+  role      Role     @default(USER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  favorites Favorite[]
+  ratings   Rating[]
+  comments  Comment[]
+  watched   Watched[]
+
+  @@map("users")
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+model Movie {
+  id             String   @id @default(uuid())
+  title          String
+  description    String?  @db.Text
+  releaseDate    DateTime?
+  duration       Int?     // Duration in minutes
+  genres         String[] // Array of genre strings
+  director       String?
+  cast           Json?    // JSONB: [{name: string, character?: string, order?: number, imageUrl?: string}]
+  crew           Json?    // JSONB: [{name: string, job: string, department?: string, imageUrl?: string}]
+  poster         String?  // URL to poster image
+  backdrop       String?  // URL to backdrop image
+  originalLanguage String?
+  budget         Int?     // Budget in USD
+  revenue        Int?     // Revenue in USD
+  averageRating  Float?   @default(0)
+  ratingCount    Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  favorites Favorite[]
+  ratings   Rating[]
+  comments  Comment[]
+  watched   Watched[]
+
+  @@map("movies")
+  @@index([title])
+  @@index([releaseDate])
+}
+
+model Favorite {
+  id        String   @id @default(uuid())
+  userId    String
+  movieId   String
+  createdAt DateTime @default(now())
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  movie Movie @relation(fields: [movieId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, movieId])
+  @@map("favorites")
+  @@index([userId])
+  @@index([movieId])
+}
+
+model Rating {
+  id        String   @id @default(uuid())
+  userId    String
+  movieId   String
+  rating    Int      // Rating from 1 to 10
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  movie Movie @relation(fields: [movieId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, movieId])
+  @@map("ratings")
+  @@index([userId])
+  @@index([movieId])
+}
+
+model Comment {
+  id        String   @id @default(uuid())
+  userId    String
+  movieId   String
+  content   String   @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  movie Movie @relation(fields: [movieId], references: [id], onDelete: Cascade)
+
+  @@map("comments")
+  @@index([userId])
+  @@index([movieId])
+  @@index([createdAt])
+}
+
+model Watched {
+  id         String   @id @default(uuid())
+  userId     String
+  movieId    String
+  watchedAt  DateTime @default(now())
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  movie Movie @relation(fields: [movieId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, movieId])
+  @@map("watched")
+  @@index([userId])
+  @@index([movieId])
+  @@index([watchedAt])
+}
