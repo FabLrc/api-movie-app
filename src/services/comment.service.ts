@@ -1,6 +1,6 @@
 import { commentRepository } from '../repositories/comment.repository';
 import { movieRepository } from '../repositories/movie.repository';
-import { redis } from '../lib/redis';
+import { cacheService, CacheService } from './cache.service';
 
 export class CommentService {
   /**
@@ -19,9 +19,8 @@ export class CommentService {
       content,
     );
 
-    // Invalidate movie comments cache
-    await redis.del(`comments:movie:${movieId}`);
-    await redis.del(`movie:${movieId}`);
+    // Invalidate movie-related caches
+    await cacheService.invalidateMovie(movieId);
 
     return comment;
   }
@@ -54,11 +53,7 @@ export class CommentService {
     const updatedComment = await commentRepository.updateComment(id, content);
 
     // Invalidate caches
-    await Promise.all([
-      redis.del(`comments:movie:${comment.movieId}`),
-      redis.del(`comments:user:${userId}`),
-      redis.del(`movie:${comment.movieId}`),
-    ]);
+    await cacheService.invalidateMovie(comment.movieId);
 
     return updatedComment;
   }
@@ -80,11 +75,7 @@ export class CommentService {
     await commentRepository.deleteComment(id);
 
     // Invalidate caches
-    await Promise.all([
-      redis.del(`comments:movie:${comment.movieId}`),
-      redis.del(`comments:user:${comment.userId}`),
-      redis.del(`movie:${comment.movieId}`),
-    ]);
+    await cacheService.invalidateMovie(comment.movieId);
   }
 
   /**
@@ -96,10 +87,11 @@ export class CommentService {
     limit: number = 20,
   ) {
     // Try to get from cache (only for first page)
+    const cacheKey = `comments:movie:${movieId}:page:${page}`;
     if (page === 1) {
-      const cached = await redis.get(`comments:movie:${movieId}`);
+      const cached = await cacheService.get(cacheKey);
       if (cached) {
-        return JSON.parse(cached);
+        return cached;
       }
     }
 
@@ -111,11 +103,7 @@ export class CommentService {
 
     // Cache first page
     if (page === 1) {
-      await redis.setex(
-        `comments:movie:${movieId}`,
-        300, // 5 minutes
-        JSON.stringify(result),
-      );
+      await cacheService.set(cacheKey, result, CacheService.TTL.MEDIUM);
     }
 
     return result;
@@ -126,10 +114,11 @@ export class CommentService {
    */
   async getUserComments(userId: string, page: number = 1, limit: number = 20) {
     // Try to get from cache (only for first page)
+    const cacheKey = `comments:user:${userId}:page:${page}`;
     if (page === 1) {
-      const cached = await redis.get(`comments:user:${userId}`);
+      const cached = await cacheService.get(cacheKey);
       if (cached) {
-        return JSON.parse(cached);
+        return cached;
       }
     }
 
@@ -137,7 +126,7 @@ export class CommentService {
 
     // Cache first page
     if (page === 1) {
-      await redis.setex(`comments:user:${userId}`, 300, JSON.stringify(result));
+      await cacheService.set(cacheKey, result, CacheService.TTL.MEDIUM);
     }
 
     return result;

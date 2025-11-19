@@ -11,7 +11,7 @@ import {
   MOVIES_INDEX,
   transformMovieToSearchDocument,
 } from '../lib/meilisearch.js';
-import { redis } from '../lib/redis.js';
+import { cacheService, CacheService } from './cache.service.js';
 
 export class MovieNotFoundError extends Error {
   constructor(id: string) {
@@ -25,17 +25,20 @@ export class MovieService {
    * Get all movies with pagination
    */
   async getMovies(params: MovieQueryParams): Promise<PaginatedResult<Movie>> {
-    const cacheKey = `movies:list:${JSON.stringify(params)}`;
-    const cached = await redis.get(cacheKey);
+    const cacheKey = cacheService.generateKey(
+      CacheService.PREFIXES.MOVIES_LIST,
+      params,
+    );
+    const cached = await cacheService.get<PaginatedResult<Movie>>(cacheKey);
 
     if (cached) {
-      return JSON.parse(cached);
+      return cached;
     }
 
     const result = await movieRepository.findAll(params);
 
     // Cache for 1 minute (lists change frequently)
-    await redis.setex(cacheKey, 60, JSON.stringify(result));
+    await cacheService.set(cacheKey, result, CacheService.TTL.SHORT);
 
     return result;
   }
@@ -44,11 +47,11 @@ export class MovieService {
    * Get a single movie by ID
    */
   async getMovieById(id: string): Promise<Movie> {
-    const cacheKey = `movie:${id}`;
-    const cached = await redis.get(cacheKey);
+    const cacheKey = `${CacheService.PREFIXES.MOVIE}${id}`;
+    const cached = await cacheService.get<Movie>(cacheKey);
 
     if (cached) {
-      return JSON.parse(cached);
+      return cached;
     }
 
     const movie = await movieRepository.findById(id);
@@ -58,7 +61,7 @@ export class MovieService {
     }
 
     // Cache for 5 minutes
-    await redis.setex(cacheKey, 300, JSON.stringify(movie));
+    await cacheService.set(cacheKey, movie, CacheService.TTL.MEDIUM);
 
     return movie;
   }
@@ -69,10 +72,11 @@ export class MovieService {
   async createMovie(data: CreateMovieInput): Promise<Movie> {
     const movie = await movieRepository.create(data);
 
-    // Invalidate list cache
-    // Since we can't easily know all list keys, we might rely on short TTL for lists
-    // or use a pattern delete if Redis supports it (scan), but for now let's just let them expire.
-    // Alternatively, we could clear specific common keys if we knew them.
+    // Invalidate all lists and search caches
+    await Promise.all([
+      cacheService.invalidateLists(),
+      cacheService.invalidateSearches(),
+    ]);
 
     // Synchronize with Meilisearch (async, don't block response)
     this.syncMovieToMeilisearch(movie).catch((error: unknown) => {
@@ -94,8 +98,8 @@ export class MovieService {
 
     const movie = await movieRepository.update(id, data);
 
-    // Invalidate specific movie cache
-    await redis.del(`movie:${id}`);
+    // Invalidate all movie-related caches
+    await cacheService.invalidateMovie(id);
 
     // Synchronize with Meilisearch (async, don't block response)
     this.syncMovieToMeilisearch(movie).catch((error: unknown) => {
@@ -117,8 +121,8 @@ export class MovieService {
 
     await movieRepository.delete(id);
 
-    // Invalidate specific movie cache
-    await redis.del(`movie:${id}`);
+    // Invalidate all movie-related caches
+    await cacheService.invalidateMovie(id);
 
     // Remove from Meilisearch (async, don't block response)
     this.removeMovieFromMeilisearch(id).catch((error: unknown) => {

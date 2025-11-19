@@ -17,7 +17,8 @@
     "prisma:studio": "prisma studio",
     "seed": "tsx prisma/seed.ts",
     "sync:meilisearch": "tsx src/scripts/sync-meilisearch.ts",
-    "test:search": "tsx src/scripts/test-search.ts"
+    "test:search": "tsx src/scripts/test-search.ts",
+    "benchmark": "tsx src/scripts/benchmark.ts"
   },
   "keywords": [
     "fastify",
@@ -48,9 +49,10 @@
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
-    "@types/node": "^22.9.1",
+    "@types/node": "^22.19.1",
     "@typescript-eslint/eslint-plugin": "^8.14.0",
     "@typescript-eslint/parser": "^8.14.0",
+    "axios": "^1.13.2",
     "eslint": "^9.14.0",
     "eslint-config-prettier": "^9.1.0",
     "eslint-plugin-prettier": "^5.2.1",

@@ -56,7 +56,7 @@ export const movieResponseSchema = z.object({
   id: z.string().uuid(),
   title: z.string(),
   description: z.string().nullable(),
-  releaseDate: z.date().nullable(),
+  releaseDate: z.union([z.string(), z.date()]).nullable(),
   duration: z.number().int().nullable(),
   genres: z.array(z.string()),
   director: z.string().nullable(),
@@ -69,8 +69,8 @@ export const movieResponseSchema = z.object({
   revenue: z.number().int().nullable(),
   averageRating: z.number().nullable(),
   ratingCount: z.number().int(),
-  createdAt: z.date(),
-  updatedAt: z.date(),
+  createdAt: z.union([z.string(), z.date()]),
+  updatedAt: z.union([z.string(), z.date()]),
 });
 
 // Schema for paginated movies response

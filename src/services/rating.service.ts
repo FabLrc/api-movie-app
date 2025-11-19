@@ -1,6 +1,6 @@
 import { ratingRepository } from '../repositories/rating.repository';
 import { movieRepository } from '../repositories/movie.repository';
-import { redis } from '../lib/redis';
+import { cacheService, CacheService } from './cache.service';
 
 export class RatingService {
   /**
@@ -30,9 +30,8 @@ export class RatingService {
 
     // Invalidate caches
     await Promise.all([
-      redis.del(`movie:${movieId}`),
-      redis.del(`ratings:user:${userId}`),
-      redis.del(`ratings:movie:${movieId}`),
+      cacheService.invalidateMovie(movieId),
+      cacheService.delete(`${CacheService.PREFIXES.RATINGS}user:${userId}`),
     ]);
 
     return userRating;
@@ -62,9 +61,8 @@ export class RatingService {
 
     // Invalidate caches
     await Promise.all([
-      redis.del(`movie:${movieId}`),
-      redis.del(`ratings:user:${userId}`),
-      redis.del(`ratings:movie:${movieId}`),
+      cacheService.invalidateMovie(movieId),
+      cacheService.delete(`${CacheService.PREFIXES.RATINGS}user:${userId}`),
     ]);
   }
 
@@ -72,16 +70,16 @@ export class RatingService {
    * Get all ratings for a movie
    */
   async getMovieRatings(movieId: string) {
-    // Try to get from cache
-    const cached = await redis.get(`ratings:movie:${movieId}`);
+    const cacheKey = `${CacheService.PREFIXES.RATINGS}movie:${movieId}`;
+    const cached = await cacheService.get(cacheKey);
     if (cached) {
-      return JSON.parse(cached);
+      return cached;
     }
 
     const ratings = await ratingRepository.getMovieRatings(movieId);
 
     // Cache for 5 minutes
-    await redis.setex(`ratings:movie:${movieId}`, 300, JSON.stringify(ratings));
+    await cacheService.set(cacheKey, ratings, CacheService.TTL.MEDIUM);
 
     return ratings;
   }
@@ -90,11 +88,11 @@ export class RatingService {
    * Get all ratings by a user
    */
   async getUserRatings(userId: string, page: number = 1, limit: number = 20) {
-    // Try to get from cache (only for first page)
+    const cacheKey = `${CacheService.PREFIXES.RATINGS}user:${userId}:page:${page}`;
     if (page === 1) {
-      const cached = await redis.get(`ratings:user:${userId}`);
+      const cached = await cacheService.get(cacheKey);
       if (cached) {
-        return JSON.parse(cached);
+        return cached;
       }
     }
 
@@ -102,7 +100,7 @@ export class RatingService {
 
     // Cache first page
     if (page === 1) {
-      await redis.setex(`ratings:user:${userId}`, 300, JSON.stringify(result));
+      await cacheService.set(cacheKey, result, CacheService.TTL.MEDIUM);
     }
 
     return result;

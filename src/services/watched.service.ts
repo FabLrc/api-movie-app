@@ -1,6 +1,6 @@
 import { watchedRepository } from '../repositories/watched.repository';
 import { movieRepository } from '../repositories/movie.repository';
-import { redis } from '../lib/redis';
+import { cacheService, CacheService } from './cache.service';
 
 export class WatchedService {
   /**
@@ -23,8 +23,7 @@ export class WatchedService {
     const watched = await watchedRepository.markAsWatched(userId, movieId);
 
     // Invalidate user watched cache
-    await redis.del(`watched:user:${userId}`);
-    await redis.del(`watched:stats:${userId}`);
+    await cacheService.invalidateUser(userId);
 
     return watched;
   }
@@ -42,8 +41,7 @@ export class WatchedService {
     await watchedRepository.unmarkAsWatched(userId, movieId);
 
     // Invalidate user watched cache
-    await redis.del(`watched:user:${userId}`);
-    await redis.del(`watched:stats:${userId}`);
+    await cacheService.invalidateUser(userId);
   }
 
   /**
@@ -61,11 +59,11 @@ export class WatchedService {
     page: number = 1,
     limit: number = 20,
   ) {
-    // Try to get from cache (only for first page)
+    const cacheKey = `${CacheService.PREFIXES.WATCHED}user:${userId}:page:${page}`;
     if (page === 1) {
-      const cached = await redis.get(`watched:user:${userId}`);
+      const cached = await cacheService.get(cacheKey);
       if (cached) {
-        return JSON.parse(cached);
+        return cached;
       }
     }
 
@@ -77,11 +75,7 @@ export class WatchedService {
 
     // Cache first page
     if (page === 1) {
-      await redis.setex(
-        `watched:user:${userId}`,
-        300, // 5 minutes
-        JSON.stringify(result),
-      );
+      await cacheService.set(cacheKey, result, CacheService.TTL.MEDIUM);
     }
 
     return result;
@@ -91,16 +85,16 @@ export class WatchedService {
    * Get user's watch statistics
    */
   async getUserWatchedStats(userId: string) {
-    // Try to get from cache
-    const cached = await redis.get(`watched:stats:${userId}`);
+    const cacheKey = `${CacheService.PREFIXES.WATCHED}stats:${userId}`;
+    const cached = await cacheService.get(cacheKey);
     if (cached) {
-      return JSON.parse(cached);
+      return cached;
     }
 
     const stats = await watchedRepository.getUserWatchedStats(userId);
 
     // Cache for 10 minutes
-    await redis.setex(`watched:stats:${userId}`, 600, JSON.stringify(stats));
+    await cacheService.set(cacheKey, stats, CacheService.TTL.MEDIUM * 2);
 
     return stats;
   }

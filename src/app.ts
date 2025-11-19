@@ -19,6 +19,7 @@ import { favoriteRoutes } from './routes/favorites.js';
 import { ratingRoutes } from './routes/ratings.js';
 import { commentRoutes } from './routes/comments.js';
 import { watchedRoutes } from './routes/watched.js';
+import { adminRoutes } from './routes/admin.js';
 
 export async function buildApp() {
   const app = Fastify({
@@ -114,6 +115,7 @@ export async function buildApp() {
   await app.register(ratingRoutes);
   await app.register(commentRoutes);
   await app.register(watchedRoutes);
+  await app.register(adminRoutes);
 
   // Root route
   app.get('/', async () => {

@@ -7,12 +7,25 @@ import type {
   SearchQueryParams,
   SearchResponse,
 } from '../schemas/search.schema.js';
+import { cacheService, CacheService } from './cache.service.js';
 
 export class SearchService {
   /**
-   * Search movies using Meilisearch
+   * Search movies using Meilisearch with caching
    */
   async searchMovies(params: SearchQueryParams): Promise<SearchResponse> {
+    // Generate cache key from search parameters
+    const cacheKey = cacheService.generateKey(
+      CacheService.PREFIXES.SEARCH,
+      params,
+    );
+
+    // Try to get from cache
+    const cached = await cacheService.get<SearchResponse>(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
     const { q, page, limit, genres, minRating, sort } = params;
 
     // Calculate offset for pagination
@@ -62,7 +75,7 @@ export class SearchService {
     const total = searchResults.estimatedTotalHits || 0;
     const totalPages = Math.ceil(total / limit);
 
-    return {
+    const response: SearchResponse = {
       data: searchResults.hits,
       pagination: {
         page,
@@ -76,12 +89,25 @@ export class SearchService {
         estimatedTotalHits: total,
       },
     };
+
+    // Cache search results for 2 minutes
+    await cacheService.set(cacheKey, response, CacheService.TTL.SHORT * 2);
+
+    return response;
   }
 
   /**
-   * Get search suggestions (autocomplete)
+   * Get search suggestions (autocomplete) with caching
    */
   async getSuggestions(query: string, limit = 5): Promise<string[]> {
+    const cacheKey = `${CacheService.PREFIXES.SEARCH}suggestions:${query}:${limit}`;
+
+    // Try to get from cache
+    const cached = await cacheService.get<string[]>(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
     const index = meiliClient.index<MovieSearchDocument>(MOVIES_INDEX);
 
     const results = await index.search(query, {
@@ -89,13 +115,30 @@ export class SearchService {
       attributesToRetrieve: ['title'],
     });
 
-    return results.hits.map((hit) => hit.title);
+    const suggestions = results.hits.map((hit) => hit.title);
+
+    // Cache suggestions for 5 minutes
+    await cacheService.set(cacheKey, suggestions, CacheService.TTL.MEDIUM);
+
+    return suggestions;
   }
 
   /**
-   * Get facet distribution for filters
+   * Get facet distribution for filters with caching
    */
   async getFacets() {
+    const cacheKey = `${CacheService.PREFIXES.SEARCH}facets`;
+
+    // Try to get from cache
+    const cached =
+      await cacheService.get<{
+        genres: Record<string, number>;
+        languages: Record<string, number>;
+      }>(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
     const index = meiliClient.index<MovieSearchDocument>(MOVIES_INDEX);
 
     const results = await index.search('', {
@@ -103,10 +146,15 @@ export class SearchService {
       facets: ['genres', 'originalLanguage'],
     });
 
-    return {
+    const facets = {
       genres: results.facetDistribution?.genres || {},
       languages: results.facetDistribution?.originalLanguage || {},
     };
+
+    // Cache facets for 1 hour (they change rarely)
+    await cacheService.set(cacheKey, facets, CacheService.TTL.LONG);
+
+    return facets;
   }
 }
 
